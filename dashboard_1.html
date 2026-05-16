@@ -307,6 +307,11 @@
 
   /* Error state */
   .error { color: rgba(255,100,100,0.6); font-size: 12px; }
+
+  /* News source colors */
+  .src-g1  { color: #e53935; }
+  .src-bbc { color: #4fc3f7; }
+  .src-ge  { color: #66bb6a; }
 </style>
 </head>
 <body>
@@ -349,7 +354,7 @@
     <div class="news-header">
       <div class="news-label">Notícias</div>
       <div class="news-line"></div>
-      <div class="news-source">BBC Brasil</div>
+      <div class="news-source src-bbc" id="newsSource">Carregando…</div>
     </div>
     <div class="news-ticker" id="newsTicker">
       <div class="news-item active loading">Carregando notícias…</div>
@@ -443,26 +448,38 @@ loadWeather();
 setInterval(loadWeather, 10 * 60 * 1000); // atualiza a cada 10 min
 
 // ── NEWS ───────────────────────────────────────────────
+const FEEDS = [
+  { url: 'https://g1.globo.com/rss/g1/',                name: 'G1',           cls: 'src-g1'  },
+  { url: 'https://feeds.bbci.co.uk/portuguese/rss.xml', name: 'BBC Brasil',   cls: 'src-bbc' },
+  { url: 'https://ge.globo.com/rss/ge/',                name: 'Globo Esporte', cls: 'src-ge'  },
+];
+const PROXY = url => `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+
 let newsItems = [];
 let newsIndex = 0;
 
+async function fetchFeed({ url, name, cls }) {
+  const res  = await fetch(PROXY(url));
+  const data = await res.json();
+  const xml  = new DOMParser().parseFromString(data.contents, 'text/xml');
+  return Array.from(xml.querySelectorAll('item')).slice(0, 8).map(item => ({
+    title:  item.querySelector('title')?.textContent || '',
+    desc:   (item.querySelector('description')?.textContent || '').replace(/<[^>]+>/g, ''),
+    source: name,
+    cls,
+  }));
+}
+
 async function loadNews() {
-  try {
-    const rss = 'https://feeds.bbci.co.uk/portuguese/rss.xml';
-    const proxy = `https://api.allorigins.win/get?url=${encodeURIComponent(rss)}`;
-    const res = await fetch(proxy);
-    const data = await res.json();
-    const xml = new DOMParser().parseFromString(data.contents, 'text/xml');
-    const items = xml.querySelectorAll('item');
-    newsItems = Array.from(items).slice(0, 12).map(item => ({
-      title: item.querySelector('title')?.textContent || '',
-      desc: item.querySelector('description')?.textContent?.replace(/<[^>]+>/g,'') || ''
-    }));
-    renderNews();
-  } catch(e) {
-    newsItems = [{ title: 'Notícias indisponíveis no momento', desc: '' }];
-    renderNews();
-  }
+  const results = await Promise.allSettled(FEEDS.map(fetchFeed));
+  const banks = results.map(r => r.status === 'fulfilled' ? r.value : []);
+  const max = Math.max(...banks.map(b => b.length));
+  newsItems = [];
+  for (let i = 0; i < max; i++)
+    banks.forEach(b => { if (b[i]) newsItems.push(b[i]); });
+  if (!newsItems.length)
+    newsItems = [{ title: 'Notícias indisponíveis no momento', desc: '', source: '—', cls: '' }];
+  renderNews();
 }
 
 function renderNews() {
@@ -471,10 +488,13 @@ function renderNews() {
   ticker.innerHTML = newsItems.map((item, i) =>
     `<div class="news-item ${i === 0 ? 'active' : ''}" data-i="${i}">
       <div class="news-title">${item.title}</div>
-      ${item.desc ? `<div class="news-sub">${item.desc.substring(0,80)}…</div>` : ''}
+      ${item.desc ? `<div class="news-sub">${item.desc.substring(0, 80)}…</div>` : ''}
     </div>`
   ).join('');
   newsIndex = 0;
+  const src = document.getElementById('newsSource');
+  src.textContent = newsItems[0].source;
+  src.className   = `news-source ${newsItems[0].cls}`;
 }
 
 function rotateNews() {
@@ -484,6 +504,10 @@ function rotateNews() {
   all[newsIndex].classList.remove('active');
   newsIndex = (newsIndex + 1) % all.length;
   all[newsIndex].classList.add('active');
+  const item = newsItems[newsIndex];
+  const src  = document.getElementById('newsSource');
+  src.textContent = item.source;
+  src.className   = `news-source ${item.cls}`;
 }
 
 loadNews();
