@@ -381,32 +381,41 @@ updateClock();
 setInterval(updateClock, 1000);
 
 // ── WEATHER ────────────────────────────────────────────
-const weatherIcons = {
-  113: '☀️', 116: '⛅', 119: '☁️', 122: '☁️',
-  143: '🌫️', 176: '🌦️', 179: '🌨️', 182: '🌧️',
-  185: '🌧️', 200: '⛈️', 227: '🌨️', 230: '❄️',
-  248: '🌫️', 260: '🌫️', 263: '🌦️', 266: '🌧️',
-  281: '🌧️', 284: '🌧️', 293: '🌧️', 296: '🌧️',
-  299: '🌧️', 302: '🌧️', 305: '🌧️', 308: '🌧️',
-  311: '🌧️', 314: '🌧️', 317: '🌧️', 320: '🌨️',
-  323: '🌨️', 326: '🌨️', 329: '❄️', 332: '❄️',
-  335: '❄️', 338: '❄️', 350: '🌧️', 353: '🌦️',
-  356: '🌧️', 359: '🌧️', 362: '🌨️', 365: '🌨️',
-  368: '🌨️', 371: '❄️', 374: '🌨️', 377: '🌨️',
-  386: '⛈️', 389: '⛈️', 392: '⛈️', 395: '❄️'
+// WMO weather codes (Open-Meteo)
+const wmoIcons = {
+  0: '☀️', 1: '🌤️', 2: '⛅', 3: '☁️',
+  45: '🌫️', 48: '🌫️',
+  51: '🌦️', 53: '🌦️', 55: '🌧️',
+  61: '🌦️', 63: '🌧️', 65: '🌧️',
+  71: '🌨️', 73: '🌨️', 75: '❄️', 77: '❄️',
+  80: '🌦️', 81: '🌧️', 82: '🌧️',
+  85: '🌨️', 86: '❄️',
+  95: '⛈️', 96: '⛈️', 99: '⛈️'
 };
 
 const diasCurtos = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 
+// Itajaí, SC — lat/lon fixos para Open-Meteo
+const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast' +
+  '?latitude=-26.908&longitude=-48.660' +
+  '&daily=temperature_2m_max,temperature_2m_min,weathercode' +
+  '&forecast_days=5&timezone=America%2FSao_Paulo';
+
 async function loadWeather() {
   try {
-    const res = await fetch('https://wttr.in/Itajai,SC,Brazil?format=j1');
-    const data = await res.json();
-    const cur = data.current_condition[0];
-    const temp = cur.temp_C;
-    const desc = cur.lang_pt ? cur.lang_pt[0].value : cur.weatherDesc[0].value;
+    const [wttrRes, fRes] = await Promise.all([
+      fetch('https://wttr.in/Itajai,SC,Brazil?format=j1'),
+      fetch(FORECAST_URL),
+    ]);
+    const data     = await wttrRes.json();
+    const forecast = await fRes.json();
+
+    // Condições atuais (wttr.in)
+    const cur      = data.current_condition[0];
+    const temp     = cur.temp_C;
+    const desc     = cur.lang_pt ? cur.lang_pt[0].value : cur.weatherDesc[0].value;
     const humidity = cur.humidity;
-    const wind = cur.windspeedKmph;
+    const wind     = cur.windspeedKmph;
 
     document.getElementById('tempNow').innerHTML = `${temp}<sup>°C</sup>`;
     document.getElementById('weatherDesc').textContent = desc;
@@ -415,20 +424,16 @@ async function loadWeather() {
       <span>💨 ${wind} km/h</span>
     `;
 
-    // Forecast
-    const days = data.weather;
-    const today = new Date();
+    // Previsão 5 dias (Open-Meteo)
+    const daily = forecast.daily;
     let html = '';
-    days.forEach((day, i) => {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
+    daily.time.forEach((dateStr, i) => {
+      const d     = new Date(dateStr + 'T12:00:00');
       const label = i === 0 ? 'Hoje' : diasCurtos[d.getDay()];
-      const max = day.maxtempC;
-      const min = day.mintempC;
-      const code = parseInt(day.hourly[4]?.weatherCode || 113);
-      const icon = weatherIcons[code] || '🌤️';
-      const isHoje = i === 0 ? 'hoje' : '';
-      html += `<div class="fc-day ${isHoje}">
+      const max   = Math.round(daily.temperature_2m_max[i]);
+      const min   = Math.round(daily.temperature_2m_min[i]);
+      const icon  = wmoIcons[daily.weathercode[i]] || '🌤️';
+      html += `<div class="fc-day ${i === 0 ? 'hoje' : ''}">
         <div class="fc-label">${label}</div>
         <span class="fc-icon">${icon}</span>
         <div class="fc-temps">
