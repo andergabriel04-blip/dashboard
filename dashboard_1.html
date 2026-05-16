@@ -30,9 +30,9 @@
   /* Animated background */
   .bg {
     position: fixed; inset: 0; z-index: 0;
-    background: radial-gradient(ellipse 80% 60% at 20% 80%, rgba(14,40,60,0.9) 0%, transparent 70%),
-                radial-gradient(ellipse 60% 50% at 80% 20%, rgba(10,30,50,0.8) 0%, transparent 70%),
-                linear-gradient(160deg, #060a0e 0%, #0a1520 40%, #060c14 100%);
+    background: radial-gradient(ellipse 80% 60% at 20% 80%, rgba(14,40,60,0.82) 0%, transparent 70%),
+                radial-gradient(ellipse 60% 50% at 80% 20%, rgba(10,30,50,0.75) 0%, transparent 70%),
+                linear-gradient(160deg, rgba(6,10,14,0.82) 0%, rgba(10,21,32,0.82) 40%, rgba(6,12,20,0.82) 100%);
   }
 
   .bg::before {
@@ -312,10 +312,21 @@
   .src-g1  { color: #e53935; }
   .src-bbc { color: #4fc3f7; }
   .src-ge  { color: #66bb6a; }
+
+  /* Slideshow */
+  #slideshow { position: fixed; inset: 0; z-index: -1; }
+  .slide {
+    position: absolute; inset: 0;
+    background-size: cover; background-position: center;
+    opacity: 0;
+    transition: opacity 2s ease-in-out;
+  }
+  .slide.active { opacity: 1; }
 </style>
 </head>
 <body>
 
+<div id="slideshow"></div>
 <div class="bg"></div>
 
 <div class="container">
@@ -518,6 +529,62 @@ function rotateNews() {
 loadNews();
 setInterval(loadNews, 15 * 60 * 1000); // atualiza a cada 15 min
 setInterval(rotateNews, 7000); // troca notícia a cada 7 segundos
+
+// ── SLIDESHOW ──────────────────────────────────────────
+const FOLDER_ID   = '1RCq0BhkDtikRVrcQBCDtcYvvzF_eHEMO';
+const PHOTO_NAMES = ['IMG_1751.jpg','IMG_2007.jpg','IMG_2535.jpg','IMG_2537.jpg',
+                     'IMG_5170.jpg','IMG_5274.jpg','IMG_6246.jpg','IMG_6572.jpg'];
+let slideIdx = 0;
+
+async function loadSlideshow() {
+  try {
+    // embeddedfolderview renders server-side HTML — no JS needed client-side
+    const embedUrl = `https://drive.google.com/embeddedfolderview?id=${FOLDER_ID}#list`;
+    const res      = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(embedUrl)}`);
+    const { contents } = await res.json();
+
+    // Extract (fileId, filename) from anchor hrefs in the rendered HTML
+    const fileMap = {};
+    const linkRe  = /href="\/file\/d\/([A-Za-z0-9_-]{25,})\/(?:view|preview)"[^>]*>\s*([^<]+)/gi;
+    for (const m of contents.matchAll(linkRe)) {
+      fileMap[m[2].trim()] = m[1];
+    }
+
+    // Fallback: also try data-id attributes
+    const dataRe = /data-id="([A-Za-z0-9_-]{25,})"[^>]*>([^<]*\.jpe?g)/gi;
+    for (const m of contents.matchAll(dataRe)) {
+      if (!fileMap[m[2].trim()]) fileMap[m[2].trim()] = m[1];
+    }
+
+    const urls = PHOTO_NAMES
+      .map(n => fileMap[n])
+      .filter(Boolean)
+      .map(id => `https://drive.google.com/thumbnail?id=${id}&sz=w1920-h1080`);
+
+    if (!urls.length) return; // folder unreachable — keep dark background
+
+    const container = document.getElementById('slideshow');
+    urls.forEach((url, i) => {
+      const div = document.createElement('div');
+      div.className = 'slide' + (i === 0 ? ' active' : '');
+      div.style.backgroundImage = `url('${url}')`;
+      container.appendChild(div);
+    });
+
+    setInterval(() => {
+      const slides = document.querySelectorAll('.slide');
+      if (!slides.length) return;
+      slides[slideIdx].classList.remove('active');
+      slideIdx = (slideIdx + 1) % slides.length;
+      slides[slideIdx].classList.add('active');
+    }, 30000);
+
+  } catch(e) {
+    // Drive unavailable — keep dark background
+  }
+}
+
+loadSlideshow();
 </script>
 
 </body>
